@@ -1,0 +1,1422 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>House Committee Spending Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+    <style>
+        :root {
+            --primary: #1a365d;
+            --primary-light: #2c5282;
+            --accent: #c53030;
+            --bg: #f7fafc;
+            --card-bg: #ffffff;
+            --border: #e2e8f0;
+            --text: #1a202c;
+            --text-muted: #718096;
+            --success: #38a169;
+            --warning: #d69e2e;
+            --danger: #e53e3e;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.5;
+        }
+
+        header {
+            background: var(--primary);
+            color: white;
+            padding: 1.5rem 2rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        header h1 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: 0.25rem;
+        }
+
+        header p {
+            font-size: 0.875rem;
+            opacity: 0.85;
+        }
+
+        .nav-tabs {
+            display: flex;
+            background: var(--primary-light);
+            padding: 0 2rem;
+            gap: 0;
+        }
+
+        .nav-tab {
+            padding: 0.75rem 1.25rem;
+            color: rgba(255,255,255,0.7);
+            cursor: pointer;
+            border-bottom: 3px solid transparent;
+            font-size: 0.9rem;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+
+        .nav-tab:hover { color: white; }
+        .nav-tab.active {
+            color: white;
+            border-bottom-color: white;
+        }
+
+        main {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 1.5rem 2rem;
+        }
+
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+
+        /* Summary Cards */
+        .summary-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .summary-card {
+            background: var(--card-bg);
+            border-radius: 8px;
+            padding: 1.25rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+            border-left: 4px solid var(--primary);
+        }
+
+        .summary-card.alert { border-left-color: var(--danger); }
+        .summary-card .label { font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
+        .summary-card .value { font-size: 1.75rem; font-weight: 700; color: var(--primary); margin: 0.25rem 0; }
+        .summary-card.alert .value { color: var(--danger); }
+        .summary-card .detail { font-size: 0.8rem; color: var(--text-muted); }
+
+        /* Controls */
+        .controls {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1.25rem;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        select, button {
+            padding: 0.5rem 1rem;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-size: 0.875rem;
+            background: white;
+        }
+
+        button {
+            cursor: pointer;
+            background: var(--primary);
+            color: white;
+            border: none;
+            font-weight: 500;
+            transition: background 0.2s;
+        }
+
+        button:hover { background: var(--primary-light); }
+        button.secondary { background: white; color: var(--primary); border: 1px solid var(--primary); }
+        button.secondary:hover { background: #edf2f7; }
+
+        /* Spreadsheet Table */
+        .table-container {
+            overflow-x: auto;
+            background: var(--card-bg);
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85rem;
+        }
+
+        th, td {
+            padding: 0.625rem 0.75rem;
+            border-bottom: 1px solid var(--border);
+            text-align: right;
+            white-space: nowrap;
+        }
+
+        th {
+            background: #f1f5f9;
+            font-weight: 600;
+            color: var(--text);
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+
+        th:first-child, td:first-child {
+            text-align: left;
+            position: sticky;
+            left: 0;
+            z-index: 5;
+            background: inherit;
+        }
+
+        th:first-child { z-index: 15; background: #f1f5f9; }
+
+        tr:hover td { background: #f7fafc; }
+        tr:hover td:first-child { background: #f7fafc; }
+
+        td.missing {
+            background: #fff5f5;
+            color: var(--danger);
+            font-style: italic;
+            text-align: center;
+        }
+
+        td.no-data {
+            color: var(--text-muted);
+            text-align: center;
+        }
+
+        .amount { font-variant-numeric: tabular-nums; }
+        .amount.negative { color: var(--danger); }
+
+        /* Sort indicator */
+        th.sortable { cursor: pointer; user-select: none; }
+        th.sortable:hover { background: #e2e8f0; }
+        th.sorted-asc::after { content: ' ▲'; font-size: 0.7em; }
+        th.sorted-desc::after { content: ' ▼'; font-size: 0.7em; }
+
+        /* Charts */
+        .chart-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        @media (max-width: 900px) {
+            .chart-grid { grid-template-columns: 1fr; }
+        }
+
+        .chart-card {
+            background: var(--card-bg);
+            border-radius: 8px;
+            padding: 1.25rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        }
+
+        .chart-card h3 {
+            font-size: 0.95rem;
+            margin-bottom: 1rem;
+            color: var(--text);
+        }
+
+        .chart-card canvas {
+            max-height: 350px;
+        }
+
+        /* Alerts Panel */
+        .alert-list {
+            background: var(--card-bg);
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        }
+
+        .alert-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.875rem 1.25rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .alert-item:last-child { border-bottom: none; }
+
+        .alert-badge {
+            display: inline-block;
+            padding: 0.2rem 0.6rem;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .alert-badge.late { background: #fff5f5; color: var(--danger); }
+        .alert-badge.gap { background: #fffff0; color: var(--warning); }
+        .alert-badge.ok { background: #f0fff4; color: var(--success); }
+
+        .committee-name { font-weight: 600; }
+        .alert-detail { font-size: 0.8rem; color: var(--text-muted); margin-top: 0.2rem; }
+
+        /* PDF link */
+        a.pdf-link {
+            color: var(--primary);
+            text-decoration: none;
+            font-size: 0.8rem;
+        }
+        a.pdf-link:hover { text-decoration: underline; }
+
+        /* Footer */
+        footer {
+            text-align: center;
+            padding: 2rem;
+            color: var(--text-muted);
+            font-size: 0.8rem;
+        }
+
+        footer a { color: var(--primary); }
+
+        /* Loading */
+        .loading {
+            text-align: center;
+            padding: 3rem;
+            color: var(--text-muted);
+        }
+
+        /* Committee detail */
+        .detail-back {
+            font-size: 0.875rem;
+            color: var(--primary);
+            cursor: pointer;
+            margin-bottom: 1rem;
+            display: inline-block;
+        }
+
+        .detail-back:hover { text-decoration: underline; }
+
+        .detail-header {
+            margin-bottom: 1.5rem;
+        }
+
+        .detail-header h2 {
+            font-size: 1.25rem;
+            margin-bottom: 0.25rem;
+        }
+
+        /* Export dropdown */
+        .export-group { position: relative; display: inline-block; }
+        .export-menu {
+            display: none;
+            position: absolute;
+            top: 100%;
+            right: 0;
+            background: white;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            z-index: 100;
+            min-width: 160px;
+        }
+        .export-menu.show { display: block; }
+        .export-menu a {
+            display: block;
+            padding: 0.5rem 1rem;
+            color: var(--text);
+            text-decoration: none;
+            font-size: 0.85rem;
+        }
+        .export-menu a:hover { background: #f7fafc; }
+    </style>
+</head>
+<body>
+
+<header>
+    <h1>House Committee Spending Dashboard</h1>
+    <p>Monthly spending reports from U.S. House committees, extracted from PDF filings to the Committee on House Administration</p>
+</header>
+
+<div class="nav-tabs">
+    <div class="nav-tab active" data-tab="overview">Overview</div>
+    <div class="nav-tab" data-tab="spreadsheet">Spreadsheet</div>
+    <div class="nav-tab" data-tab="charts">Charts</div>
+    <div class="nav-tab" data-tab="alerts">Filing Alerts</div>
+    <div class="nav-tab" data-tab="detail">Committee Detail</div>
+    <div class="nav-tab" data-tab="about">About</div>
+</div>
+
+<main>
+    <!-- OVERVIEW TAB -->
+    <div id="tab-overview" class="tab-content active">
+        <div class="summary-cards" id="summary-cards"></div>
+        <div id="notable-findings" style="margin-bottom:1.5rem;"></div>
+        <div class="chart-grid">
+            <div class="chart-card">
+                <h3>Total Monthly Spending Across All Committees</h3>
+                <canvas id="chart-total-spending"></canvas>
+            </div>
+            <div class="chart-card">
+                <h3>Spending by Category (Latest Month)</h3>
+                <canvas id="chart-category-breakdown"></canvas>
+            </div>
+        </div>
+        <div class="chart-card" style="margin-bottom:1.5rem;">
+            <h3>Committee Spending Comparison (YTD)</h3>
+            <canvas id="chart-committee-comparison" style="max-height:500px;"></canvas>
+        </div>
+    </div>
+
+    <!-- SPREADSHEET TAB -->
+    <div id="tab-spreadsheet" class="tab-content">
+        <div class="controls">
+            <select id="metric-select">
+                <option value="mtd_total">Monthly Disbursed (MTD)</option>
+                <option value="ytd_total">Year-to-Date (YTD)</option>
+                <option value="personnel_compensation">Personnel Compensation</option>
+                <option value="travel">Travel</option>
+                <option value="rent_communications_utilities">Rent/Comm/Utilities</option>
+                <option value="printing_reproduction">Printing & Reproduction</option>
+                <option value="other_services">Other Services</option>
+                <option value="supplies_materials">Supplies & Materials</option>
+                <option value="equipment">Equipment</option>
+            </select>
+            <select id="year-select"></select>
+            <div class="export-group">
+                <button class="secondary" onclick="toggleExport()">Export ▾</button>
+                <div class="export-menu" id="export-menu">
+                    <a href="#" onclick="exportCSV(); return false;">Download CSV</a>
+                    <a href="#" onclick="exportJSON(); return false;">Download JSON</a>
+                </div>
+            </div>
+        </div>
+        <div class="table-container" id="spreadsheet-table"></div>
+    </div>
+
+    <!-- CHARTS TAB -->
+    <div id="tab-charts" class="tab-content">
+        <div class="controls">
+            <select id="chart-committee-select"></select>
+            <select id="chart-year-select"></select>
+        </div>
+        <div class="chart-grid">
+            <div class="chart-card">
+                <h3>Monthly Spending Trend</h3>
+                <canvas id="chart-monthly-trend"></canvas>
+            </div>
+            <div class="chart-card">
+                <h3>Spending by Category</h3>
+                <canvas id="chart-category-pie"></canvas>
+            </div>
+            <div class="chart-card">
+                <h3>Personnel vs. Non-Personnel Spending</h3>
+                <canvas id="chart-personnel-ratio"></canvas>
+            </div>
+            <div class="chart-card">
+                <h3>Cumulative Year-to-Date Spending</h3>
+                <canvas id="chart-ytd-progress"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- ALERTS TAB -->
+    <div id="tab-alerts" class="tab-content">
+        <div class="controls">
+            <select id="alert-congress-select">
+                <option value="119">119th Congress</option>
+            </select>
+        </div>
+        <div id="alert-summary-cards" class="summary-cards"></div>
+        <h3 style="margin-bottom:1rem;">Filing Status by Committee</h3>
+        <div class="alert-list" id="alert-list"></div>
+    </div>
+
+    <!-- DETAIL TAB -->
+    <div id="tab-detail" class="tab-content">
+        <div id="detail-content">
+            <p class="loading">Select a committee from the Overview or Spreadsheet tab to view details.</p>
+        </div>
+    </div>
+</main>
+
+<div id="tab-about" class="tab-content">
+    <div class="chart-card" style="max-width:800px;">
+        <h3 style="margin-bottom:1rem;">About This Data</h3>
+        <p style="margin-bottom:0.75rem;">Each House committee is required to submit a monthly spending report to the <a href="https://cha.house.gov/committee-reports" target="_blank">Committee on House Administration</a>. These reports are published only as PDFs, making analysis difficult.</p>
+        <p style="margin-bottom:0.75rem;">This dashboard automatically extracts financial data from those PDFs and presents it in a searchable, sortable format.</p>
+
+        <h4 style="margin:1rem 0 0.5rem;">Data Sources &amp; Methodology</h4>
+        <ul style="margin-left:1.5rem;margin-bottom:0.75rem;">
+            <li><strong>Source:</strong> PDF reports from <a href="https://cha.house.gov/committee-reports" target="_blank">cha.house.gov/committee-reports</a></li>
+            <li><strong>Extraction:</strong> Text-based PDFs parsed with pdfplumber; scanned/image PDFs read via AI vision (Claude Haiku). 274 of 281 reports (98%) successfully extracted.</li>
+            <li><strong>Scope:</strong> 119th Congress (January 2025 &ndash; present), 22 standing and select committees</li>
+            <li><strong>Data collected:</strong> March 18, 2026</li>
+        </ul>
+
+        <h4 style="margin:1rem 0 0.5rem;">What the Numbers Mean</h4>
+        <ul style="margin-left:1.5rem;margin-bottom:0.75rem;">
+            <li><strong>MTD (Month-to-Date):</strong> Amount disbursed during that calendar month</li>
+            <li><strong>YTD (Year-to-Date):</strong> Cumulative disbursements for the legislative year (resets each January for a new session)</li>
+            <li><strong>Personnel Compensation:</strong> Staff salaries and benefits (Object Class 11)</li>
+            <li><strong>Travel:</strong> Airfare, lodging, per diem, field hearings (Object Class 21)</li>
+            <li><strong>Rent/Comm/Utilities:</strong> Telecom, postage, equipment rental (Object Class 23)</li>
+            <li><strong>Printing &amp; Reproduction:</strong> Non-franked printing, photography (Object Class 24)</li>
+            <li><strong>Other Services:</strong> Technology contracts, web hosting (Object Class 25)</li>
+            <li><strong>Supplies &amp; Materials:</strong> Office supplies, food, software, publications (Object Class 26)</li>
+            <li><strong>Equipment:</strong> Purchases and maintenance under $25,000 (Object Class 31)</li>
+        </ul>
+
+        <h4 style="margin:1rem 0 0.5rem;">Filing Status</h4>
+        <ul style="margin-left:1.5rem;margin-bottom:0.75rem;">
+            <li><strong>"Not filed":</strong> No PDF report found on the CHA website for that committee/month</li>
+            <li><strong>"$0 PDF":</strong> A report was filed but the automated extraction could not read the financial table (usually due to non-standard formatting). The original PDF is linked.</li>
+        </ul>
+
+        <h4 style="margin:1rem 0 0.5rem;">Known Limitations</h4>
+        <ul style="margin-left:1.5rem;margin-bottom:0.75rem;">
+            <li>AI-assisted OCR may produce minor numerical inaccuracies on scanned documents. Always verify critical figures against the source PDF.</li>
+            <li>Employee count data is incomplete &mdash; many scanned reports could not have payroll sections reliably extracted.</li>
+            <li>This is a static snapshot. Data does not update automatically when new reports are posted.</li>
+            <li>Some committees use non-standard report formats that may cause extraction errors.</li>
+        </ul>
+
+        <p style="margin-top:1rem;color:var(--text-muted);font-size:0.85rem;">Scripts and data available on <a href="https://github.com/jeremyschlatter-intern/house-committee-spending" target="_blank">GitHub</a>.</p>
+    </div>
+</div>
+
+<footer>
+    <p>Data extracted from <a href="https://cha.house.gov/committee-reports" target="_blank">House Administration Committee Monthly Reports</a>.</p>
+    <p>Data collected March 18, 2026. Reports were extracted using automated PDF parsing and AI-assisted OCR.</p>
+    <p style="margin-top:0.25rem;font-size:0.75rem;">This is a static snapshot &mdash; data does not update automatically. Verify critical figures against the <a href="https://cha.house.gov/committee-reports" target="_blank">source PDFs</a>.</p>
+</footer>
+
+<script>
+// ===== DATA =====
+let spendingData = [];
+let reportIndex = [];
+
+const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const MONTH_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+const CATEGORY_LABELS = {
+    personnel_compensation: 'Personnel',
+    travel: 'Travel',
+    rent_communications_utilities: 'Rent/Comm/Util',
+    printing_reproduction: 'Printing',
+    other_services: 'Other Services',
+    supplies_materials: 'Supplies',
+    equipment: 'Equipment'
+};
+
+const CATEGORY_COLORS = {
+    personnel_compensation: '#2c5282',
+    travel: '#2b6cb0',
+    rent_communications_utilities: '#3182ce',
+    printing_reproduction: '#4299e1',
+    other_services: '#63b3ed',
+    supplies_materials: '#90cdf4',
+    equipment: '#bee3f8'
+};
+
+// Official committee names for display
+const COMMITTEE_DISPLAY_NAMES = {
+    'China': 'Select Committee on the CCP',
+    'Oversight and Government Reform': 'Oversight and Accountability',
+};
+
+function displayName(committee) {
+    return COMMITTEE_DISPLAY_NAMES[committee] || committee;
+}
+
+// ===== INIT =====
+async function init() {
+    try {
+        const [spendingResp, indexResp] = await Promise.all([
+            fetch('data/spending_119.json'),
+            fetch('data/report_index.json')
+        ]);
+        spendingData = await spendingResp.json();
+        reportIndex = await indexResp.json();
+    } catch (e) {
+        console.error('Failed to load data:', e);
+        document.querySelector('main').innerHTML = '<p class="loading">Failed to load data. Make sure data files exist in the data/ directory.</p>';
+        return;
+    }
+
+    // Static data collection date - do NOT use new Date() as that misleads users
+    const DATA_COLLECTED = 'March 18, 2026';
+
+    setupTabs();
+    setupSelects();
+    renderOverview();
+    renderSpreadsheet();
+    renderAlerts();
+}
+
+// ===== TABS =====
+function setupTabs() {
+    document.querySelectorAll('.nav-tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+            document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+            tab.classList.add('active');
+            document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+
+            if (tab.dataset.tab === 'charts') renderCharts();
+        });
+    });
+}
+
+function switchToTab(tabName) {
+    document.querySelectorAll('.nav-tab').forEach(t => {
+        t.classList.toggle('active', t.dataset.tab === tabName);
+    });
+    document.querySelectorAll('.tab-content').forEach(t => {
+        t.classList.toggle('active', t.id === 'tab-' + tabName);
+    });
+}
+
+// ===== SELECTS =====
+function setupSelects() {
+    const years = [...new Set(spendingData.map(r => r.year))].sort();
+    const committees = [...new Set(spendingData.map(r => r.committee))].sort();
+
+    // Year selects
+    ['year-select', 'chart-year-select'].forEach(id => {
+        const sel = document.getElementById(id);
+        if (!sel) return;
+        years.forEach(y => {
+            const opt = document.createElement('option');
+            opt.value = y;
+            opt.textContent = y;
+            if (y === 2025) opt.selected = true;
+            sel.appendChild(opt);
+        });
+        sel.addEventListener('change', () => {
+            if (id === 'year-select') renderSpreadsheet();
+            else renderCharts();
+        });
+    });
+
+    // Committee select for charts
+    const chartSel = document.getElementById('chart-committee-select');
+    const allOpt = document.createElement('option');
+    allOpt.value = '_all';
+    allOpt.textContent = 'All Committees';
+    chartSel.appendChild(allOpt);
+    committees.forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c;
+        opt.textContent = c;
+        chartSel.appendChild(opt);
+    });
+    chartSel.addEventListener('change', renderCharts);
+
+    // Metric select
+    document.getElementById('metric-select').addEventListener('change', renderSpreadsheet);
+}
+
+// ===== HELPERS =====
+function fmt(n) {
+    if (n === null || n === undefined) return '—';
+    if (n === 0) return '$0';
+    return '$' + Math.round(n).toLocaleString();
+}
+
+function fmtShort(n) {
+    if (n >= 1e6) return '$' + (n / 1e6).toFixed(1) + 'M';
+    if (n >= 1e3) return '$' + (n / 1e3).toFixed(0) + 'K';
+    return '$' + Math.round(n).toLocaleString();
+}
+
+function getReport(committee, month, year) {
+    return spendingData.find(r =>
+        r.committee === committee && r.month === month && r.year === year
+    );
+}
+
+function getCommitteeReports(committee) {
+    return spendingData.filter(r => r.committee === committee);
+}
+
+function getCategoryMTD(report, category) {
+    if (!report || !report.categories || !report.categories[category]) return 0;
+    return report.categories[category].mtd || 0;
+}
+
+function getCategoryYTD(report, category) {
+    if (!report || !report.categories || !report.categories[category]) return 0;
+    return report.categories[category].ytd || 0;
+}
+
+// ===== OVERVIEW =====
+function renderOverview() {
+    const committees = [...new Set(spendingData.map(r => r.committee))];
+    const latestReports = [];
+    committees.forEach(c => {
+        const reports = getCommitteeReports(c)
+            .filter(r => r.mtd_total > 0 || r.ytd_total > 0)
+            .sort((a, b) => (b.year * 100 + b.month_num) - (a.year * 100 + a.month_num));
+        if (reports.length > 0) latestReports.push(reports[0]);
+    });
+
+    const totalMonthly = latestReports.reduce((s, r) => s + (r.mtd_total || 0), 0);
+    const totalYTD = latestReports.reduce((s, r) => s + (r.ytd_total || 0), 0);
+
+    // Missing reports: committees without a report for the most recent expected month
+    const expectedMonths = getExpectedMonths();
+    const missing = committees.filter(c => {
+        const lastExpected = expectedMonths[expectedMonths.length - 1];
+        const hasReport = reportIndex.find(r =>
+            r.committee === c && r.month === lastExpected.month && r.year === lastExpected.year && r.congress === 119
+        );
+        return !hasReport;
+    });
+
+    const cards = document.getElementById('summary-cards');
+    cards.innerHTML = `
+        <div class="summary-card">
+            <div class="label">Committees Tracked</div>
+            <div class="value">${committees.length}</div>
+            <div class="detail">119th Congress</div>
+        </div>
+        <div class="summary-card">
+            <div class="label">Total Reports Filed</div>
+            <div class="value">${reportIndex.filter(r => r.congress === 119).length}</div>
+            <div class="detail">Jan 2025 – present</div>
+        </div>
+        <div class="summary-card">
+            <div class="label">Avg Monthly Spending</div>
+            <div class="value">${fmtShort(totalMonthly / Math.max(latestReports.length, 1))}</div>
+            <div class="detail">Per committee (latest month)</div>
+        </div>
+        <div class="summary-card alert">
+            <div class="label">Not Yet in Dataset</div>
+            <div class="value">${missing.length}</div>
+            <div class="detail">${missing.length > 0 ? 'As of data collection date' : 'All committees up to date'}</div>
+        </div>
+    `;
+
+    // Notable Findings
+    const findings = [];
+
+    // Find committees with consecutive missing filings
+    const expectedMo = getExpectedMonths();
+    committees.forEach(c => {
+        const filedMonths = reportIndex
+            .filter(r => r.committee === c && r.congress === 119)
+            .map(r => `${r.year}-${r.month}`);
+        let run = 0, maxRun = 0;
+        expectedMo.forEach(em => {
+            if (!filedMonths.includes(`${em.year}-${em.month}`)) { run++; maxRun = Math.max(maxRun, run); }
+            else run = 0;
+        });
+        if (maxRun >= 3) findings.push(`<strong>${displayName(c)}</strong> has not filed for ${maxRun} consecutive months.`);
+    });
+
+    // Find biggest single-month spender
+    const biggestMTD = [...spendingData].sort((a, b) => (b.mtd_total || 0) - (a.mtd_total || 0))[0];
+    if (biggestMTD && biggestMTD.mtd_total > 1000000) {
+        findings.push(`Largest single-month disbursement: <strong>${displayName(biggestMTD.committee)}</strong> spent ${fmt(biggestMTD.mtd_total)} in ${biggestMTD.month} ${biggestMTD.year}.`);
+    }
+
+    const findingsEl = document.getElementById('notable-findings');
+    if (findings.length > 0) {
+        findingsEl.innerHTML = `<div class="chart-card" style="border-left:4px solid var(--warning);padding:1rem 1.25rem;">
+            <h3 style="margin-bottom:0.5rem;font-size:0.95rem;">Notable Findings</h3>
+            <ul style="margin-left:1.25rem;font-size:0.9rem;">
+                ${findings.map(f => `<li style="margin-bottom:0.3rem;">${f}</li>`).join('')}
+            </ul>
+        </div>`;
+    }
+
+    renderOverviewCharts(committees);
+}
+
+function renderOverviewCharts(committees) {
+    // Total monthly spending chart
+    const months2025 = MONTHS.map((m, i) => {
+        const total = spendingData
+            .filter(r => r.year === 2025 && r.month === m)
+            .reduce((s, r) => s + (r.mtd_total || 0), 0);
+        return total;
+    });
+
+    const months2026 = MONTHS.slice(0, 2).map((m, i) => {
+        const total = spendingData
+            .filter(r => r.year === 2026 && r.month === m)
+            .reduce((s, r) => s + (r.mtd_total || 0), 0);
+        return total;
+    });
+
+    const allMonthLabels = MONTH_ABBR.map(m => m + ' 25').concat(MONTH_ABBR.slice(0, 2).map(m => m + ' 26'));
+    const allMonthData = months2025.concat(months2026);
+
+    destroyChart('chart-total-spending');
+    new Chart(document.getElementById('chart-total-spending'), {
+        type: 'bar',
+        data: {
+            labels: allMonthLabels,
+            datasets: [{
+                label: 'Total Spending',
+                data: allMonthData,
+                backgroundColor: '#2c5282',
+                borderRadius: 4,
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: { label: (ctx) => fmt(ctx.raw) }
+                }
+            },
+            scales: {
+                y: {
+                    ticks: { callback: v => fmtShort(v) },
+                    beginAtZero: true,
+                }
+            }
+        }
+    });
+
+    // Category breakdown (latest available data)
+    const latestMonth = spendingData
+        .filter(r => r.mtd_total > 0)
+        .sort((a, b) => (b.year * 100 + b.month_num) - (a.year * 100 + a.month_num))[0];
+
+    if (latestMonth) {
+        const latestMonthData = spendingData.filter(r =>
+            r.year === latestMonth.year && r.month === latestMonth.month && r.mtd_total > 0
+        );
+
+        const catTotals = {};
+        Object.keys(CATEGORY_LABELS).forEach(cat => {
+            catTotals[cat] = latestMonthData.reduce((s, r) => s + getCategoryMTD(r, cat), 0);
+        });
+
+        destroyChart('chart-category-breakdown');
+        new Chart(document.getElementById('chart-category-breakdown'), {
+            type: 'doughnut',
+            data: {
+                labels: Object.values(CATEGORY_LABELS),
+                datasets: [{
+                    data: Object.values(catTotals),
+                    backgroundColor: Object.values(CATEGORY_COLORS),
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    tooltip: {
+                        callbacks: { label: (ctx) => ctx.label + ': ' + fmt(ctx.raw) }
+                    }
+                }
+            }
+        });
+    }
+
+    // Committee comparison (YTD)
+    const committeeYTD = committees.map(c => {
+        const reports = getCommitteeReports(c)
+            .filter(r => r.ytd_total > 0)
+            .sort((a, b) => (b.year * 100 + b.month_num) - (a.year * 100 + a.month_num));
+        // Use the latest available YTD
+        return { committee: c, ytd: reports.length > 0 ? reports[0].ytd_total : 0 };
+    }).sort((a, b) => b.ytd - a.ytd);
+
+    destroyChart('chart-committee-comparison');
+    new Chart(document.getElementById('chart-committee-comparison'), {
+        type: 'bar',
+        data: {
+            labels: committeeYTD.map(c => displayName(c.committee)),
+            datasets: [{
+                label: 'Year-to-Date Spending',
+                data: committeeYTD.map(c => c.ytd),
+                backgroundColor: committeeYTD.map((_, i) =>
+                    `hsl(${210 + i * 5}, ${60 - i}%, ${35 + i * 2}%)`
+                ),
+                borderRadius: 4,
+            }]
+        },
+        options: {
+            indexAxis: 'y',
+            responsive: true,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: { label: (ctx) => fmt(ctx.raw) }
+                }
+            },
+            scales: {
+                x: {
+                    ticks: { callback: v => fmtShort(v) },
+                    beginAtZero: true,
+                }
+            },
+            onClick: (e, elements) => {
+                if (elements.length > 0) {
+                    const committee = committeeYTD[elements[0].index].committee;
+                    showCommitteeDetail(committee);
+                }
+            }
+        }
+    });
+}
+
+// ===== SPREADSHEET =====
+function renderSpreadsheet() {
+    const metric = document.getElementById('metric-select').value;
+    const year = parseInt(document.getElementById('year-select').value) || 2025;
+    const committees = [...new Set(spendingData.map(r => r.committee))].sort();
+
+    // Build months for the selected year
+    const activeMonths = MONTHS.filter((m, i) => {
+        return spendingData.some(r => r.month === m && r.year === year);
+    });
+
+    let html = '<table><thead><tr><th class="sortable" data-sort="committee">Committee</th>';
+    activeMonths.forEach(m => {
+        html += `<th class="sortable" data-sort="${m}">${MONTH_ABBR[MONTHS.indexOf(m)]}</th>`;
+    });
+    html += '<th class="sortable" data-sort="total">Total</th></tr></thead><tbody>';
+
+    const rows = committees.map(committee => {
+        const row = { committee, months: {}, total: 0 };
+        activeMonths.forEach(month => {
+            const report = getReport(committee, month, year);
+            let value = null;
+
+            if (!report) {
+                // Check if there's a report in the index (filed but no data extracted)
+                const indexed = reportIndex.find(r =>
+                    r.committee === committee && r.month === month && r.year === year && r.congress === 119
+                );
+                row.months[month] = { value: null, filed: !!indexed, url: indexed ? indexed.pdf_url : null };
+            } else {
+                if (metric === 'mtd_total') value = report.mtd_total;
+                else if (metric === 'ytd_total') value = report.ytd_total;
+                else value = getCategoryMTD(report, metric);
+
+                row.months[month] = { value, filed: true, url: report.pdf_url };
+                if (value) row.total += value;
+            }
+        });
+        return row;
+    });
+
+    rows.forEach(row => {
+        html += `<tr><td><a href="#" onclick="showCommitteeDetail('${row.committee}'); return false;" style="color:var(--primary);text-decoration:none;font-weight:500;">${displayName(row.committee)}</a></td>`;
+        activeMonths.forEach(month => {
+            const cell = row.months[month];
+            if (!cell || (!cell.filed && cell.value === null)) {
+                html += '<td class="missing">Not filed</td>';
+            } else if (cell.value === null || cell.value === 0) {
+                const link = cell.url ? `<a class="pdf-link" href="${cell.url}" target="_blank">PDF</a>` : '';
+                html += `<td class="no-data">$0 ${link}</td>`;
+            } else {
+                html += `<td class="amount">${fmt(cell.value)}</td>`;
+            }
+        });
+        const totalDisplay = fmt(row.total);
+        html += `<td class="amount" style="font-weight:600;">${row.total > 0 ? totalDisplay : '—'}</td>`;
+        html += '</tr>';
+    });
+
+    html += '</tbody></table>';
+    document.getElementById('spreadsheet-table').innerHTML = html;
+
+    // Add sort listeners
+    document.querySelectorAll('.sortable').forEach(th => {
+        th.addEventListener('click', () => sortTable(th));
+    });
+}
+
+let sortState = { col: null, dir: 'asc' };
+
+function sortTable(th) {
+    // Simple client-side sort
+    const table = th.closest('table');
+    const tbody = table.querySelector('tbody');
+    const rows = Array.from(tbody.querySelectorAll('tr'));
+    const colIdx = Array.from(th.parentElement.children).indexOf(th);
+
+    const dir = (sortState.col === colIdx && sortState.dir === 'asc') ? 'desc' : 'asc';
+    sortState = { col: colIdx, dir };
+
+    document.querySelectorAll('.sortable').forEach(t => {
+        t.classList.remove('sorted-asc', 'sorted-desc');
+    });
+    th.classList.add(dir === 'asc' ? 'sorted-asc' : 'sorted-desc');
+
+    rows.sort((a, b) => {
+        let aVal = a.children[colIdx].textContent.trim();
+        let bVal = b.children[colIdx].textContent.trim();
+
+        // Try numeric sort
+        const aNum = parseFloat(aVal.replace(/[$,—]/g, '')) || 0;
+        const bNum = parseFloat(bVal.replace(/[$,—]/g, '')) || 0;
+
+        if (aNum || bNum) {
+            return dir === 'asc' ? aNum - bNum : bNum - aNum;
+        }
+        return dir === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+    });
+
+    rows.forEach(r => tbody.appendChild(r));
+}
+
+// ===== CHARTS TAB =====
+const chartInstances = {};
+
+function destroyChart(id) {
+    if (chartInstances[id]) {
+        chartInstances[id].destroy();
+        delete chartInstances[id];
+    }
+}
+
+function renderCharts() {
+    const committee = document.getElementById('chart-committee-select').value;
+    const year = parseInt(document.getElementById('chart-year-select').value) || 2025;
+
+    const reports = committee === '_all'
+        ? spendingData.filter(r => r.year === year)
+        : spendingData.filter(r => r.committee === committee && r.year === year);
+
+    // Monthly trend
+    const monthlyTotals = MONTHS.map(m => {
+        const monthReports = reports.filter(r => r.month === m);
+        return monthReports.reduce((s, r) => s + (r.mtd_total || 0), 0);
+    });
+
+    destroyChart('chart-monthly-trend');
+    chartInstances['chart-monthly-trend'] = new Chart(document.getElementById('chart-monthly-trend'), {
+        type: 'line',
+        data: {
+            labels: MONTH_ABBR,
+            datasets: [{
+                label: 'Monthly Disbursed',
+                data: monthlyTotals,
+                borderColor: '#2c5282',
+                backgroundColor: 'rgba(44, 82, 130, 0.1)',
+                fill: true,
+                tension: 0.3,
+                pointRadius: 4,
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                tooltip: { callbacks: { label: ctx => fmt(ctx.raw) } }
+            },
+            scales: {
+                y: { ticks: { callback: v => fmtShort(v) }, beginAtZero: true }
+            }
+        }
+    });
+
+    // Category pie
+    const catTotals = {};
+    Object.keys(CATEGORY_LABELS).forEach(cat => {
+        catTotals[cat] = reports.reduce((s, r) => s + getCategoryMTD(r, cat), 0);
+    });
+
+    destroyChart('chart-category-pie');
+    chartInstances['chart-category-pie'] = new Chart(document.getElementById('chart-category-pie'), {
+        type: 'doughnut',
+        data: {
+            labels: Object.values(CATEGORY_LABELS),
+            datasets: [{
+                data: Object.values(catTotals),
+                backgroundColor: Object.values(CATEGORY_COLORS),
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                tooltip: { callbacks: { label: ctx => ctx.label + ': ' + fmt(ctx.raw) } }
+            }
+        }
+    });
+
+    // Personnel vs non-personnel
+    const personnelData = MONTHS.map(m => {
+        const monthReports = reports.filter(r => r.month === m);
+        return monthReports.reduce((s, r) => s + getCategoryMTD(r, 'personnel_compensation'), 0);
+    });
+    const nonPersonnelData = MONTHS.map((m, i) => monthlyTotals[i] - personnelData[i]);
+
+    destroyChart('chart-personnel-ratio');
+    chartInstances['chart-personnel-ratio'] = new Chart(document.getElementById('chart-personnel-ratio'), {
+        type: 'bar',
+        data: {
+            labels: MONTH_ABBR,
+            datasets: [
+                { label: 'Personnel', data: personnelData, backgroundColor: '#2c5282', borderRadius: 4 },
+                { label: 'Non-Personnel', data: nonPersonnelData, backgroundColor: '#90cdf4', borderRadius: 4 },
+            ]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                tooltip: { callbacks: { label: ctx => ctx.dataset.label + ': ' + fmt(ctx.raw) } }
+            },
+            scales: {
+                x: { stacked: true },
+                y: { stacked: true, ticks: { callback: v => fmtShort(v) }, beginAtZero: true }
+            }
+        }
+    });
+
+    // YTD progress
+    const ytdData = MONTHS.map(m => {
+        const monthReports = reports.filter(r => r.month === m);
+        return monthReports.reduce((s, r) => s + (r.ytd_total || 0), 0);
+    });
+
+    destroyChart('chart-ytd-progress');
+    chartInstances['chart-ytd-progress'] = new Chart(document.getElementById('chart-ytd-progress'), {
+        type: 'line',
+        data: {
+            labels: MONTH_ABBR,
+            datasets: [{
+                label: 'Cumulative YTD',
+                data: ytdData,
+                borderColor: '#38a169',
+                backgroundColor: 'rgba(56, 161, 105, 0.1)',
+                fill: true,
+                tension: 0.3,
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                tooltip: { callbacks: { label: ctx => fmt(ctx.raw) } }
+            },
+            scales: {
+                y: { ticks: { callback: v => fmtShort(v) }, beginAtZero: true }
+            }
+        }
+    });
+}
+
+// ===== ALERTS =====
+function getExpectedMonths() {
+    // Dynamically determine expected months based on what's in the data
+    // A month is "expected" if at least 3 committees have filed for it
+    const monthCounts = {};
+    reportIndex.filter(r => r.congress === 119).forEach(r => {
+        const key = `${r.year}-${MONTHS.indexOf(r.month) + 1}`;
+        monthCounts[key] = (monthCounts[key] || 0) + 1;
+    });
+
+    const months = [];
+    for (let y = 2025; y <= 2030; y++) {
+        for (let m = 1; m <= 12; m++) {
+            const key = `${y}-${m}`;
+            if (monthCounts[key] && monthCounts[key] >= 3) {
+                months.push({ month: MONTHS[m - 1], year: y, num: m });
+            }
+        }
+    }
+    return months;
+}
+
+function renderAlerts() {
+    const committees = [...new Set(spendingData.map(r => r.committee))].sort();
+    const expectedMonths = getExpectedMonths();
+
+    let filedCount = 0;
+    let missingCount = 0;
+    let gapCount = 0;
+    const alertItems = [];
+
+    committees.forEach(committee => {
+        const filedMonths = reportIndex
+            .filter(r => r.committee === committee && r.congress === 119)
+            .map(r => `${r.year}-${r.month}`);
+
+        const missingMonths = [];
+        const gapMonths = [];
+
+        // Expected months: check which are missing
+        // Only count months where at least some committees have filed
+        const latestFiled = reportIndex
+            .filter(r => r.congress === 119)
+            .reduce((max, r) => {
+                const val = r.year * 100 + MONTHS.indexOf(r.month) + 1;
+                return val > max ? val : max;
+            }, 0);
+
+        expectedMonths.forEach(em => {
+            const emVal = em.year * 100 + em.num;
+            if (emVal > latestFiled) return; // Don't count future months
+
+            const key = `${em.year}-${em.month}`;
+            if (!filedMonths.includes(key)) {
+                missingMonths.push(em);
+            }
+        });
+
+        const filed = filedMonths.length;
+        filedCount += filed;
+
+        // Check for consecutive missing months
+        let maxConsecutive = 0;
+        let currentRun = 0;
+        expectedMonths.forEach(em => {
+            const key = `${em.year}-${em.month}`;
+            if (!filedMonths.includes(key)) {
+                currentRun++;
+                maxConsecutive = Math.max(maxConsecutive, currentRun);
+            } else {
+                currentRun = 0;
+            }
+        });
+
+        let status, badge, detail;
+        if (missingMonths.length === 0) {
+            status = 'ok';
+            badge = 'Up to date';
+            detail = `${filed} reports filed`;
+        } else if (maxConsecutive >= 3) {
+            status = 'late';
+            badge = `${maxConsecutive} consecutive`;
+            detail = `Missing: ${missingMonths.map(m => m.month + ' ' + m.year).join(', ')}`;
+            missingCount += missingMonths.length;
+        } else if (missingMonths.length <= 2) {
+            status = 'gap';
+            badge = `${missingMonths.length} missing`;
+            detail = `Missing: ${missingMonths.map(m => m.month + ' ' + m.year).join(', ')}`;
+            gapCount += missingMonths.length;
+        } else {
+            status = 'late';
+            badge = `${missingMonths.length} missing`;
+            detail = `Missing: ${missingMonths.slice(0, 4).map(m => m.month + ' ' + m.year).join(', ')}${missingMonths.length > 4 ? '...' : ''}`;
+            missingCount += missingMonths.length;
+        }
+
+        alertItems.push({ committee, status, badge, detail, filed, missing: missingMonths.length, consecutive: maxConsecutive });
+    });
+
+    // Sort: most missing first
+    alertItems.sort((a, b) => b.missing - a.missing);
+
+    // Summary cards
+    const alertCards = document.getElementById('alert-summary-cards');
+    const totalMissing = alertItems.reduce((s, a) => s + a.missing, 0);
+    const upToDate = alertItems.filter(a => a.missing === 0).length;
+    alertCards.innerHTML = `
+        <div class="summary-card">
+            <div class="label">Committees Up to Date</div>
+            <div class="value">${upToDate}</div>
+            <div class="detail">of ${committees.length} total</div>
+        </div>
+        <div class="summary-card alert">
+            <div class="label">Total Missing Reports</div>
+            <div class="value">${totalMissing}</div>
+            <div class="detail">Across all committees</div>
+        </div>
+        <div class="summary-card">
+            <div class="label">Total Reports Filed</div>
+            <div class="value">${reportIndex.filter(r => r.congress === 119).length}</div>
+            <div class="detail">119th Congress</div>
+        </div>
+    `;
+
+    // Alert list
+    const list = document.getElementById('alert-list');
+    list.innerHTML = alertItems.map(item => `
+        <div class="alert-item">
+            <div>
+                <div class="committee-name">
+                    <a href="#" onclick="showCommitteeDetail('${item.committee}'); return false;" style="color:var(--text);text-decoration:none;">${displayName(item.committee)}</a>
+                </div>
+                <div class="alert-detail">${item.detail}</div>
+            </div>
+            <span class="alert-badge ${item.status}">${item.badge}</span>
+        </div>
+    `).join('');
+}
+
+// ===== COMMITTEE DETAIL =====
+function showCommitteeDetail(committee) {
+    switchToTab('detail');
+    const reports = getCommitteeReports(committee).sort((a, b) =>
+        (a.year * 100 + a.month_num) - (b.year * 100 + b.month_num)
+    );
+
+    const content = document.getElementById('detail-content');
+
+    let html = `
+        <span class="detail-back" onclick="switchToTab('overview')">← Back to Overview</span>
+        <div class="detail-header">
+            <h2>Committee on ${displayName(committee)}</h2>
+            <p style="color:var(--text-muted);">${reports.length} reports filed in the 119th Congress</p>
+        </div>
+    `;
+
+    // Summary cards
+    const latestWithData = [...reports].reverse().find(r => r.mtd_total > 0);
+    const totalSpent = reports.reduce((s, r) => s + (r.mtd_total || 0), 0);
+    const avgMonthly = totalSpent / Math.max(reports.filter(r => r.mtd_total > 0).length, 1);
+
+    html += `<div class="summary-cards">
+        <div class="summary-card">
+            <div class="label">Latest MTD</div>
+            <div class="value">${latestWithData ? fmt(latestWithData.mtd_total) : '—'}</div>
+            <div class="detail">${latestWithData ? latestWithData.month + ' ' + latestWithData.year : ''}</div>
+        </div>
+        <div class="summary-card">
+            <div class="label">Latest YTD</div>
+            <div class="value">${latestWithData ? fmt(latestWithData.ytd_total) : '—'}</div>
+            <div class="detail">Year-to-date total</div>
+        </div>
+        <div class="summary-card">
+            <div class="label">Avg Monthly</div>
+            <div class="value">${fmt(avgMonthly)}</div>
+            <div class="detail">Average disbursement</div>
+        </div>
+        <div class="summary-card">
+            <div class="label">Employees</div>
+            <div class="value">${latestWithData ? latestWithData.employee_count || '—' : '—'}</div>
+            <div class="detail">Latest payroll count</div>
+        </div>
+    </div>`;
+
+    // Detail table
+    html += `<div class="table-container"><table>
+        <thead><tr>
+            <th>Month</th><th>Personnel</th><th>Travel</th><th>Rent/Comm</th>
+            <th>Printing</th><th>Other Svc</th><th>Supplies</th><th>Equipment</th>
+            <th>MTD Total</th><th>YTD Total</th><th>PDF</th>
+        </tr></thead><tbody>`;
+
+    reports.forEach(r => {
+        html += `<tr>
+            <td style="text-align:left;font-weight:500;">${r.month} ${r.year}</td>
+            <td class="amount">${fmt(getCategoryMTD(r, 'personnel_compensation'))}</td>
+            <td class="amount">${fmt(getCategoryMTD(r, 'travel'))}</td>
+            <td class="amount">${fmt(getCategoryMTD(r, 'rent_communications_utilities'))}</td>
+            <td class="amount">${fmt(getCategoryMTD(r, 'printing_reproduction'))}</td>
+            <td class="amount">${fmt(getCategoryMTD(r, 'other_services'))}</td>
+            <td class="amount">${fmt(getCategoryMTD(r, 'supplies_materials'))}</td>
+            <td class="amount">${fmt(getCategoryMTD(r, 'equipment'))}</td>
+            <td class="amount" style="font-weight:600;">${fmt(r.mtd_total)}</td>
+            <td class="amount">${fmt(r.ytd_total)}</td>
+            <td><a class="pdf-link" href="${r.pdf_url}" target="_blank">View</a></td>
+        </tr>`;
+    });
+
+    html += '</tbody></table></div>';
+
+    // Charts
+    html += `<div class="chart-grid" style="margin-top:1.5rem;">
+        <div class="chart-card"><h3>Monthly Spending Trend</h3><canvas id="detail-chart-trend"></canvas></div>
+        <div class="chart-card"><h3>Spending Breakdown</h3><canvas id="detail-chart-breakdown"></canvas></div>
+    </div>`;
+
+    content.innerHTML = html;
+
+    // Render detail charts
+    const labels = reports.map(r => MONTH_ABBR[r.month_num - 1] + ' ' + (r.year % 100));
+    const mtdData = reports.map(r => r.mtd_total || 0);
+
+    new Chart(document.getElementById('detail-chart-trend'), {
+        type: 'line',
+        data: {
+            labels,
+            datasets: [{
+                label: 'Monthly Disbursed',
+                data: mtdData,
+                borderColor: '#2c5282',
+                backgroundColor: 'rgba(44, 82, 130, 0.1)',
+                fill: true,
+                tension: 0.3,
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: { tooltip: { callbacks: { label: ctx => fmt(ctx.raw) } } },
+            scales: { y: { ticks: { callback: v => fmtShort(v) }, beginAtZero: true } }
+        }
+    });
+
+    const catLabels = Object.keys(CATEGORY_LABELS);
+    const catData = catLabels.map(cat =>
+        reports.reduce((s, r) => s + getCategoryMTD(r, cat), 0)
+    );
+
+    new Chart(document.getElementById('detail-chart-breakdown'), {
+        type: 'doughnut',
+        data: {
+            labels: catLabels.map(c => CATEGORY_LABELS[c]),
+            datasets: [{
+                data: catData,
+                backgroundColor: catLabels.map(c => CATEGORY_COLORS[c]),
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: { tooltip: { callbacks: { label: ctx => ctx.label + ': ' + fmt(ctx.raw) } } }
+        }
+    });
+}
+
+// ===== EXPORT =====
+function toggleExport() {
+    document.getElementById('export-menu').classList.toggle('show');
+}
+
+document.addEventListener('click', e => {
+    if (!e.target.closest('.export-group')) {
+        document.getElementById('export-menu').classList.remove('show');
+    }
+});
+
+function exportCSV() {
+    const metric = document.getElementById('metric-select').value;
+    const year = parseInt(document.getElementById('year-select').value) || 2025;
+    const committees = [...new Set(spendingData.map(r => r.committee))].sort();
+    const activeMonths = MONTHS.filter(m => spendingData.some(r => r.month === m && r.year === year));
+
+    let csv = 'Committee,' + activeMonths.join(',') + ',Total\n';
+
+    committees.forEach(committee => {
+        let total = 0;
+        const values = activeMonths.map(month => {
+            const report = getReport(committee, month, year);
+            let value = 0;
+            if (report) {
+                if (metric === 'mtd_total') value = report.mtd_total || 0;
+                else if (metric === 'ytd_total') value = report.ytd_total || 0;
+                else if (metric === 'employee_count') value = report.employee_count || 0;
+                else value = getCategoryMTD(report, metric);
+            }
+            total += value;
+            return value;
+        });
+        csv += `"${committee}",${values.join(',')},${total}\n`;
+    });
+
+    downloadFile(csv, `house_committee_spending_${year}_${metric}.csv`, 'text/csv');
+}
+
+function exportJSON() {
+    const data = JSON.stringify(spendingData, null, 2);
+    downloadFile(data, 'house_committee_spending.json', 'application/json');
+}
+
+function downloadFile(content, filename, type) {
+    const blob = new Blob([content], { type });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
+// ===== START =====
+init();
+</script>
+</body>
+</html>
